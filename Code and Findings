@@ -1,0 +1,213 @@
+### Boston Dataset
+
+Read in the boston dataset from the MASS package:
+```{r}
+library(MASS)
+data(Boston)
+str(Boston)
+help(Boston)
+```
+
+Here MEDV is the output /target variable i.e., price of the house to be predicted. Since the output variable is continuous we will be using regression trees.
+
+Install and load the required packages: rpart, rpart.plot, gbm, randomForest, ipred
+```{r}
+#keep the command install.packages # after installing to save
+#install.packages("rpart")
+#install.packages("rpart.plot")
+#install.packages("gbm")
+#install.packages("randomForest")
+#install.packages("ipred")
+#Can require an update of R not actually fully needed just nice to use varImp() function
+#install.packages("caret") 
+library(rpart)
+library(rpart.plot)
+library(gbm)
+library(randomForest)
+library(ipred)
+library(pROC)
+library(caret) #just to use varImp on Q1 not needed for lab technically
+```
+
+##Decision tree 
+
+(a) Split the dataset into a training and test set (60:40).  Fit a decision tree to the training set.
+
+```{r}
+set.seed(29)
+n_train <- round(0.6 * nrow(Boston)) 
+
+# Create a vector of indices which is an 60% random sample
+train_indices <- sample(1:nrow(Boston), n_train)
+
+# Subset the credit data frame to training indices only
+Boston_train <- Boston[train_indices, ]  
+
+# Exclude the training indices to create the test set
+Boston_test <- Boston[-train_indices, ]
+
+#run the model on train dataset
+model <- rpart(formula = medv ~ ., 
+                            data = Boston_train, 
+                            method = "anova")
+print(model)
+varImp(model)
+
+
+
+
+```
+
+Plot the decision tree and predict the response for the test set.
+
+```{r}
+
+# Display the results
+rpart.plot(x = model, 
+           type = 3, extra = 0,
+           box.palette = "Greens", 
+           fallen.leaves = TRUE)
+
+# get predited values and residuals of the model
+Boston_test$predicted = predict(model,Boston_test)
+
+```
+
+```{r}
+#didnt request but shows how close predicted and actually
+plot(Boston_test$medv~Boston_test$predicted, ylab="Actual Value", xlab="Predicted Value")
+```
+
+Compute the Root Mean Squared Error (RMSE) for the test set ( RMSE = sqrt(mean(residuals^2)) ). How does this compare to using the mean of price to predict the test dataset by finding the standard deviation of the response variable?
+
+```{r}
+Boston_test$residuals_test <- Boston_test$medv - Boston_test$predicted
+Boston_test$residuals_test
+
+# Calculate RMSE
+sqrt(mean(Boston_test$residuals_test^2))
+
+# Calculate sd
+sd(Boston_test$medv)
+
+```
+
+ ##Bagging
+
+Use the bagging function on the training data.
+
+```{r}
+bagged_model <- bagging(formula =  medv ~ ., 
+                        data = Boston_train,
+                        coob = TRUE) 
+
+```
+
+```{r}
+varImp(bagged_model)
+print(bagged_model)
+
+```
+
+ #Predict the response for the test set and compute the RMSE for the test set. How does it compare with the RMSE for the decision tree?
+
+```{r}
+
+# get predicted values and residuals of the model
+Boston_test$predicted = predict(bagged_model,Boston_test)
+Boston_test$residuals_test <- Boston_test$medv - Boston_test$predicted
+
+# Calculate RMSE
+sqrt(mean(Boston_test$residuals_test^2))
+
+#
+plot(Boston_test$medv~Boston_test$predicted, ylab="Actual Value", xlab="Predicted Value")
+```
+The RMSE on the test dataset has decreased showing that this model is getting closer to the actual values. The Out of Bag estimate was also less than the RMSE for the rpart decision tree showing further improvement. 
+
+#Random forest
+
+# Use the random forest technique on the training data.
+
+```{r}
+rf_model <- randomForest(formula =  medv ~ ., 
+                        data = Boston_train)
+
+```
+
+```{r}
+varImp(rf_model)
+
+print(rf_model)
+
+```
+
+
+# Use the plot function on your output of the randomForest function. This plots the performance of the "out of bag" OOB error  (the error rate for the samples not used in the bootstrapped trees - it is a built-in validation set) against the number of trees. What does it tell you?
+
+```{r}
+plot(rf_model)
+```
+This plot helps us identify how many trees are needed to decrease the error rate. So we can see that after 150 trees there is no more improvement in the error rate.
+
+# Predict the response for the test set and compute the RMSE for the test set. How does it compare with the RMSE for the decision tree and bagging?
+
+```{r}
+# get predicted values and residuals of the model
+Boston_test$predicted = predict(rf_model,Boston_test)
+Boston_test$residuals_test <- Boston_test$medv - Boston_test$predicted
+
+# Calculate RMSE
+sqrt(mean(Boston_test$residuals_test^2))
+
+#
+plot(Boston_test$medv~Boston_test$predicted, ylab="Actual Value", xlab="Predicted Value")
+```
+
+THe RMSE has improved even further using the rf to show that predicted values are much closer to the actual values in the test dataset, the plot shows this too. Although more variance at the larger houses prices
+
+
+##Boosting
+
+#Perform boosting on the Boston data training set using the following code: 
+
+GBM Hyperparameters:
+* n.trees: number of trees
+* bag.fraction: proportion of observations to be sampled in each tree
+* n.minobsinnode: minimum number of observations in the trees terminal nodes
+* interaction.depth: maximum nodes per tree
+* shrinkage: learning rate is used for reducing, or shrinking, the impact of each additional tree added to the ensemble. (It reduces the size of incremental steps and therefore penalizes the importance of each consecutive iteration. Since boosting is sensitive to making mistakes, it's better to take many small steps rather than a few large ones.)
+
+```{r}
+gbm_model <- gbm(medv~., data = Boston_train, distribution = "gaussian", n.trees = 10000, shrinkage = 0.01, interaction.depth = 4)
+```
+
+#  Look at the summary of the gbm model. Interpret this.
+
+```{r}
+summary(gbm_model)
+```
+
+# Predict the response for the test set and compute the RMSE for the test set. How does it compare with the RMSE for the decision tree, bagging and random forest above?
+
+```{r}
+# get predicted values and residuals of the model using only 5000
+Boston_test$predicted5000 = predict(gbm_model,Boston_test,ntrees=5000)
+Boston_test$residuals5000 <- Boston_test$medv - Boston_test$predicted5000
+
+# Calculate RMSE
+sqrt(mean(Boston_test$residuals5000^2))
+
+
+# get predicted values and residuals of the model
+Boston_test$predicted = predict(gbm_model,Boston_test)
+Boston_test$residuals_test <- Boston_test$medv - Boston_test$predicted
+
+# Calculate RMSE
+sqrt(mean(Boston_test$residuals_test^2))
+
+#
+plot(Boston_test$medv~Boston_test$predicted, ylab="Actual Value", xlab="Predicted Value")
+```
+
+The RMSE has increased slightly on test dataset from the rf to boosting although the plot shows looks better bar there seems to be an outlier. 
